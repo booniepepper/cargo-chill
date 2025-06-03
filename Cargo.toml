@@ -6,7 +6,7 @@ license = "BSD 3-Clause"
 homepage = "https://crates.io/crates/cargo-chill"
 repository = "https://github.com/booniepepper/cargo-chill"
 description = "Chill out with some byte-counting robots."
-keywords = ["game"]
+keywords = ["terminal", "tui", "game", "incremental", "ascii-art"]
 
 [dependencies]
 crossterm = "0.29.0"
