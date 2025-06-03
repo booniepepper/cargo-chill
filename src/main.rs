@@ -9,20 +9,62 @@ use ratatui::{
     style::Stylize,
     symbols::border,
     text::{Line, Text},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Block, Paragraph, Widget},
 };
 
 static BANNER: &[u8] = include_bytes!("../art/banner.txt");
 static CRATELIN: &[u8] = include_bytes!("../art/bots/cratelin.txt");
-static EZ11: &[u8] = include_bytes!("../art/bots/ez11.txt");
+static _EZ11: &[u8] = include_bytes!("../art/bots/ez11.txt");
 
 #[derive(Debug, Default)]
 enum CoolNumber {
+    #[default]
+    Not,
+
     Overflow,
     Underflow,
+    Perfect,
     Square(u8),
     Cube(u8),
-    #[default]    Not,
+    HyperCube(u8, u8),
+    // TODO: Can I source more interesting sequences? (See: https://oeis.org, Combo Class, etc)
+}
+
+impl CoolNumber {
+    pub fn coolness(from: u8, to: u8) -> Self {
+        use CoolNumber::*;
+
+        match (from, to) {
+            (0, 255) => Underflow,
+            (255, 0) => Overflow,
+            (_, 6) | (_, 28) => Perfect,
+            // TODO: Pre-calculate?
+            _ => match to {
+                4 => Square(2),
+                8 => Cube(2),
+                16 => HyperCube(2, 4),
+                32 => HyperCube(2, 5),
+                64 => HyperCube(2, 6),
+                128 => HyperCube(2, 7),
+                9 => Square(3),
+                27 => Cube(3),
+                81 => HyperCube(3, 4),
+                243 => HyperCube(3, 5),
+                25 => Square(5),
+                125 => Cube(5),
+                36 => Square(6),
+                216 => Cube(6),
+                49 => Square(7),
+                100 => Square(10),
+                121 => Square(11),
+                144 => Square(12),
+                169 => Square(13),
+                196 => Square(14),
+                225 => Square(15),
+                _ => Not,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -43,7 +85,7 @@ impl App {
     }
 
     fn draw(&self, frame: &mut Frame) {
-        let banner_text = str::from_utf8(&BANNER).unwrap();
+        let banner_text = str::from_utf8(BANNER).unwrap();
         let banner_lines = banner_text.lines().count().try_into().unwrap();
 
         let outer_layout = Layout::default()
@@ -53,7 +95,7 @@ impl App {
 
         let inner_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Percentage(25), Constraint::Percentage(75)])
+            .constraints(vec![Constraint::Length(15), Constraint::Min(0)])
             .split(outer_layout[1]);
 
         frame.render_widget(
@@ -65,7 +107,7 @@ impl App {
         );
 
         frame.render_widget(
-            Paragraph::new(str::from_utf8(&CRATELIN).unwrap()).block(Block::new()),
+            Paragraph::new(str::from_utf8(CRATELIN).unwrap()).block(Block::new()),
             inner_layout[0],
         );
 
@@ -105,19 +147,17 @@ impl App {
     }
 
     fn increment_counter(&mut self) {
-        self.coolness = match self.counter {
-            255 => CoolNumber::Overflow,
-            _ => CoolNumber::Not,
-        };
+        let before = self.counter;
         self.counter += 1;
+
+        self.coolness = CoolNumber::coolness(before, self.counter);
     }
 
     fn decrement_counter(&mut self) {
-        self.coolness = match self.counter {
-            0 => CoolNumber::Underflow,
-            _ => CoolNumber::Not,
-        };
+        let before = self.counter;
         self.counter -= 1;
+
+        self.coolness = CoolNumber::coolness(before, self.counter);
     }
 }
 
@@ -150,17 +190,22 @@ impl Widget for &App {
             ]),
             Line::from(vec![]),
             Line::from(vec![]),
+            Line::from(vec![]),
             Line::from(vec![
-                "There will be more here later, but for now here's a counter. We're all kinda into counting right now."
+                "There's not a lot to do here right now. We've all kinda been into counting recently."
                     .into(),
             ]),
             Line::from(vec![]),
-            Line::from(vec!["Value: ".into(), self.counter.to_string().yellow()]),
+            Line::from(vec!["Byte: ".into(), self.counter.to_string().yellow()]),
             Line::from(vec![]),
             Line::from(match self.coolness {
                 CoolNumber::Overflow => vec!["Sick overflow!!!".into()],
                 CoolNumber::Underflow => vec!["lol underflow".into()],
-                _ => vec![],
+                CoolNumber::Square(n) => vec![format!("Nice, that's {} squared", n).into()],
+                CoolNumber::Cube(n) => vec![format!("Yo that's {} cubed", n).into()],
+                CoolNumber::HyperCube(n, k) => vec![format!("Whoa, a {}-dimensional hyper cube of {}!", k, n).into()],
+                CoolNumber::Perfect => vec!["ah... perfection".into()],
+                CoolNumber::Not => vec![],
             }),
         ]);
 
