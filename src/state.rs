@@ -60,6 +60,7 @@ pub fn get_or_create_save_dir() -> PathBuf {
     data_dir.to_path_buf()
 }
 
+#[derive(Debug)]
 struct SavePaths {
     state_json: PathBuf,
     digest: PathBuf,
@@ -139,7 +140,7 @@ pub fn load_state(save_dir: &Path) -> Result<State, std::io::Error> {
         }
         Err(e) => match e.kind() {
             std::io::ErrorKind::NotFound => {
-                if state.metadata.launched_times > 0 {
+                if state.metadata.launched_times > 1 {
                     state.metadata.taint_level += 1;
                 }
             }
@@ -158,12 +159,12 @@ pub fn save_state(save_dir: &Path, state: &State) -> Result<(), std::io::Error> 
     let paths: SavePaths = save_dir.into();
 
     let state_json = serde_json::to_string(state).unwrap();
-    std::fs::write(paths.state_json, &state_json)?;
+    std::fs::write(&paths.state_json, &state_json)?;
 
     let digest = sha256::digest(&state_json);
-    std::fs::write(paths.digest, &digest)?;
+    std::fs::write(&paths.digest, &digest)?;
 
-    std::fs::remove_file(paths.lock)?;
+    std::fs::remove_file(&paths.lock)?;
 
     Ok(())
 }
