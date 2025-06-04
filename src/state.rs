@@ -9,7 +9,10 @@
 //! Consider all future fields optional, and append-able. Avoid altering names
 //! and spend a lot of time considering names.
 
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use chrono::{DateTime, Local};
 use directories::ProjectDirs;
@@ -61,7 +64,7 @@ pub fn get_or_create_save_dir() -> PathBuf {
 }
 
 #[derive(Debug)]
-struct SavePaths {
+pub struct SavePaths {
     state_json: PathBuf,
     digest: PathBuf,
     lock: PathBuf,
@@ -86,39 +89,52 @@ impl From<&Path> for SavePaths {
     }
 }
 
-/// Loads state from a given directory.
-///
-/// Three files will attempt to load:
-///
-/// 1. `.lock`: We will bail if this is present and represents an active process
-/// 2. `state.json`: The state from a previous Chill session
-/// 3. `.digest`: A SHA sum that helps detect people fiddling with the state
-///
-/// It will additionally create the following if they don't exist:
-///
-/// 1. `.lock`: Will be created with the current process ID
-pub fn load_state(save_dir: &Path) -> Result<State, std::io::Error> {
-    let paths: SavePaths = save_dir.into();
+pub enum LockError {
+    AlreadyRunning(OsString, u32),
+}
 
+pub fn aquire_lock(paths: &SavePaths) -> Result<(), LockError> {
     // .lock (check pre-existing)
     if paths.lock.is_file() {
         if let Ok(pid) = std::fs::read_to_string(&paths.lock) {
             let pid = Pid::from(pid.trim().parse::<usize>().unwrap());
+
             let mut system = System::new_all();
             system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
-            if let Some(process) = system.process(pid.into()) {
-                panic!(
-                    "Already running as {} (PID: {})",
-                    process.name().to_string_lossy(),
-                    pid
-                );
-            } else {
-                // TODO: Log this? A previous process created a lock but never cleaned it up.
-                std::fs::remove_file(&paths.lock).unwrap();
-            }
-        }
-    };
 
+            if let Some(process) = system.process(pid) {
+                return Err(LockError::AlreadyRunning(
+                    process.name().to_owned(),
+                    pid.as_u32(),
+                ));
+            } else {
+                // Previous session exited without cleaning lock file. (Maybe crash?)
+            };
+        };
+    }
+
+    // .lock (create)
+    let this_pid = std::process::id();
+    std::fs::write(&paths.lock, this_pid.to_string()).unwrap();
+
+    Ok(())
+}
+
+pub fn release_lock(paths: &SavePaths) -> std::io::Result<()> {
+    std::fs::remove_file(&paths.lock)
+}
+
+/// Loads state from a given directory.
+///
+/// Three files will attempt to load:
+///
+/// 1. `state.json`: The state from a previous Chill session
+/// 2. `.digest`: A SHA sum that helps detect people fiddling with the state
+///
+/// It will additionally create the following if they don't exist:
+///
+/// 1. `.lock`: Will be created with the current process ID
+pub fn load_state(paths: &SavePaths) -> Result<State, std::io::Error> {
     // state.json
     let state_json = if paths.state_json.is_file() {
         std::fs::read_to_string(&paths.state_json).unwrap()
@@ -148,23 +164,15 @@ pub fn load_state(save_dir: &Path) -> Result<State, std::io::Error> {
         },
     };
 
-    // .lock (create)
-    let this_pid = std::process::id();
-    std::fs::write(paths.lock, this_pid.to_string()).unwrap();
-
     Ok(state)
 }
 
-pub fn save_state(save_dir: &Path, state: &State) -> Result<(), std::io::Error> {
-    let paths: SavePaths = save_dir.into();
-
+pub fn save_state(paths: &SavePaths, state: &State) -> Result<(), std::io::Error> {
     let state_json = serde_json::to_string(state).unwrap();
     std::fs::write(&paths.state_json, &state_json)?;
 
     let digest = sha256::digest(&state_json);
     std::fs::write(&paths.digest, &digest)?;
-
-    std::fs::remove_file(&paths.lock)?;
 
     Ok(())
 }

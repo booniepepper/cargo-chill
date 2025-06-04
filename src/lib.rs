@@ -8,6 +8,7 @@ use ratatui::{
 
 pub mod bots;
 pub mod state;
+pub use state::*;
 
 pub static BANNER: &[u8] = include_bytes!("../art/banner.txt");
 pub static _EZ11: &[u8] = include_bytes!("../art/bots/ez11.txt");
